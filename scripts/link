@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+if [[ -n "$1" ]]; then
+  LOCAL_PYTHON="$1"
+  shift
+else
+  LOCAL_PYTHON=../Dedalus-python
+fi
+
+echo "==> Linking with local directory"
+uv add "$LOCAL_PYTHON"

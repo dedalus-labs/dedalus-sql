@@ -1,0 +1,47 @@
+{
+  "name": "dedalus",
+  "abstract": "The official PostgreSQL extension for the Dedalus API.",
+  "tags": [
+    "api",
+    "http",
+    "rest",
+    "sdk"
+  ],
+  "version": "0.0.1",
+  "release_status": "testing",
+  "maintainer": "Dedalus <oss@dedaluslabs.ai>",
+  "generated_by": "Stainless (https://stainless.com)",
+  "license": "mit",
+  "resources": {
+    "homepage": "https://docs.dedaluslabs.ai",
+    "bugtracker": {
+      "web": "https://www.github.com/stainless-sdks/dedalus-sql/issues",
+      "mailto": "oss@dedaluslabs.ai"
+    },
+    "repository": {
+      "url": "git://github.com/stainless-sdks/dedalus-sql.git",
+      "web": "https://www.github.com/stainless-sdks/dedalus-sql",
+      "type": "git"
+    }
+  },
+  "provides": {
+    "dedalus": {
+      "abstract": "The official PostgreSQL extension for the Dedalus API.",
+      "file": "sql/build/dedalus--0.0.1.sql",
+      "docfile": "README.md",
+      "version": "0.0.1"
+    }
+  },
+  "prereqs": {
+    "runtime": {
+      "requires": {
+        "PostgreSQL": "14.0.0",
+        "plpython3u": "0"
+      }
+    }
+  },
+  "meta-spec": {
+    "version": "1.0.0",
+    "url": "https://pgxn.org/meta/spec.txt"
+  }
+}
