@@ -15,12 +15,12 @@
   "resources": {
     "homepage": "https://docs.dedaluslabs.ai",
     "bugtracker": {
-      "web": "https://www.github.com/stainless-sdks/dedalus-sql/issues",
+      "web": "https://www.github.com/dedalus-labs/dedalus-sql/issues",
       "mailto": "oss@dedaluslabs.ai"
     },
     "repository": {
-      "url": "git://github.com/stainless-sdks/dedalus-sql.git",
-      "web": "https://www.github.com/stainless-sdks/dedalus-sql",
+      "url": "git://github.com/dedalus-labs/dedalus-sql.git",
+      "web": "https://www.github.com/dedalus-labs/dedalus-sql",
       "type": "git"
     }
   },
