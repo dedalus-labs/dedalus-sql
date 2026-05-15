@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m' # No Color
+
+function steady_is_running() {
+  curl --silent "http://127.0.0.1:4010/_x-steady/health" >/dev/null 2>&1
+}
+
+kill_server_on_port() {
+  pids=$(lsof -t -i tcp:"$1" || echo "")
+  if [ "$pids" != "" ]; then
+    kill "$pids"
+    echo "Stopped $pids."
+  fi
+}
+
+function is_overriding_api_base_url() {
+  [ -n "$TEST_API_BASE_URL" ]
+}
+
+if ! is_overriding_api_base_url && ! steady_is_running ; then
+  # When we exit this script, make sure to kill the background mock server process
+  trap 'kill_server_on_port 4010' EXIT
+
+  # Start the dev server
+  ./scripts/mock --daemon
+fi
+
+if is_overriding_api_base_url ; then
+  echo -e "${GREEN}✔ Running tests against ${TEST_API_BASE_URL}${NC}"
+  echo
+elif ! steady_is_running ; then
+  echo -e "${RED}ERROR:${NC} The test suite will not run without a mock Steady server"
+  echo -e "running against your OpenAPI spec."
+  echo
+  echo -e "To run the server, pass in the path or url of your OpenAPI"
+  echo -e "spec to the steady command:"
+  echo
+  echo -e "  \$ ${YELLOW}npm exec --package=@stdy/cli@0.22.1 -- steady path/to/your.openapi.yml --host 127.0.0.1 -p 4010 --validator-query-array-format=repeat --validator-form-array-format=repeat --validator-query-object-format=brackets --validator-form-object-format=brackets${NC}"
+  echo
+
+  exit 1
+else
+  echo -e "${GREEN}✔ Mock steady server is running with your OpenAPI spec${NC}"
+  echo
+fi
+
+echo "==> Detecting PostgreSQL Python executable"
+PYTHON_EXECUTABLE_PATH=$(pg_config --configure | grep -o "PYTHON=[^ ]*" | cut -d= -f2 | tr -d "'")
+echo "PostgreSQL uses Python $PYTHON_EXECUTABLE_PATH"
+
+echo "==> Setting up Python venv"
+uv sync --python "$PYTHON_EXECUTABLE_PATH"
+# shellcheck source=/dev/null
+source ./.venv/bin/activate
+
+echo "==> Cleaning temp"
+rm -rf temp
+
+echo "==> Running initdb"
+"$(pg_config --bindir)/initdb" -A trust --no-instructions -D temp/db
+
+echo "==> Running make install"
+PG_MAJOR_VERSION=$(pg_config --version | sed 's/^PostgreSQL *//' | cut -d. -f1)
+if [ "$PG_MAJOR_VERSION" -ge 18 ]; then
+  # In PostgreSQL >=18 we can point `postgres` to our local extensions directory, so install there.
+  make install prefix=temp/install
+
+  # Symlink the system plpython3u to our local directory.
+  echo "==> Symlinking plpython3u"
+  mkdir -p temp/install/share/postgresql/extension
+  for file in "$(pg_config --sharedir)"/extension/plpython3u*; do
+    ln -s "$file" "temp/install/share/postgresql/extension/$(basename "$file")"
+  done
+  POSTGRES_CONFIG=(-c extension_control_path="$(realpath temp/install/share/postgresql)")
+else
+  # In PostgreSQL <18 we cannot point `postgres` to our local extensions directory. So we install directly to
+  # the system.
+  sudo make install PG_CONFIG="$(command -v pg_config)"
+fi
+
+echo "==> Running postgres"
+PYTHONPATH="$(python -c "import site; print(site.getsitepackages()[0])")"
+export PYTHONPATH
+export PGOPTIONS="-c dedalus.base_url=${TEST_API_BASE_URL:-http://localhost:4010}"
+"$(pg_config --bindir)/postgres" -D temp/db "${POSTGRES_CONFIG[@]}" &
+POSTGRES_PID=$!
+trap 'kill $POSTGRES_PID' EXIT
+TIMEOUT=10
+ELAPSED=0
+until pg_isready -q; do
+  if [ $ELAPSED -ge $TIMEOUT ]; then
+    echo "ERROR: PostgreSQL failed to start within ~${TIMEOUT}s"
+    exit 1
+  fi
+  sleep 1
+  ELAPSED=$((ELAPSED + 1))
+done
+
+echo "==> Running make installcheck"
+if [[ -n "$*" ]]; then
+  # Run just the specified tests.
+  make installcheck REGRESS="setup $*" REGRESS_OPTS="--inputdir=test --outputdir=regress" || true
+else
+  make installcheck || true
+fi
+mkdir -p test/expected
+cp regress/results/*.out test/expected/
+error_files=$(grep -l "^ERROR:\|^WARNING:" test/expected/*.out 2>/dev/null || true)
+if [ -n "$error_files" ]; then
+  echo -e "${RED}ERROR: Tests failed!${NC}"
+  for file in $error_files; do
+    echo "  $file:"
+    grep -n "^ERROR:\|^WARNING:" "$file" | sed 's/^/    /'
+  done
+  exit 1
+else
+  echo -e "${GREEN}✔ Tests passed!${NC}"
+fi

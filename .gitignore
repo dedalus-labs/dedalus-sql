@@ -1,0 +1,8 @@
+.prism.log
+.stdy.log
+.venv
+temp/
+regress/
+sql/build/
+test/expected/
+!test/expected/setup.out

@@ -1,0 +1,51 @@
+name: CI
+on:
+  push:
+    branches:
+      - '**'
+      - '!integrated/**'
+      - '!stl-preview-head/**'
+      - '!stl-preview-base/**'
+      - '!generated'
+      - '!codegen/**'
+      - 'codegen/stl/**'
+  pull_request:
+    branches-ignore:
+      - 'stl-preview-head/**'
+      - 'stl-preview-base/**'
+
+jobs:
+  test:
+    timeout-minutes: 10
+    name: test
+    runs-on: ${{ github.repository == 'stainless-sdks/dedalus-sql' && 'depot-ubuntu-24.04' || 'ubuntu-latest' }}
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install PostgreSQL 14
+        run: |
+          # Add PostgreSQL APT repository
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+
+          # Install PostgreSQL 14, the oldest non-EOL version (https://endoflife.date/postgresql)
+          sudo apt-get update
+          sudo apt-get install -y postgresql-14 postgresql-contrib-14 postgresql-plpython3-14
+
+          # Update PATH
+          echo /usr/lib/postgresql/14/bin >> $GITHUB_PATH
+
+      - name: Set up PostgreSQL directory
+        run: |
+          sudo mkdir -p /var/run/postgresql
+          sudo chown -R $USER:$USER /var/run/postgresql
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: '0.9.21'
+
+      - name: Run tests
+        run: ./scripts/test

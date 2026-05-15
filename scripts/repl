@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+
+echo "==> Detecting PostgreSQL Python executable"
+PYTHON_EXECUTABLE_PATH=$(pg_config --configure | grep -o "PYTHON=[^ ]*" | cut -d= -f2 | tr -d "'")
+echo "PostgreSQL uses Python $PYTHON_EXECUTABLE_PATH"
+
+echo "==> Setting up Python venv"
+uv sync --python "$PYTHON_EXECUTABLE_PATH"
+# shellcheck source=/dev/null
+source ./.venv/bin/activate
+
+echo "==> Cleaning temp"
+rm -rf temp
+
+echo "==> Running initdb"
+"$(pg_config --bindir)/initdb" -A trust --no-instructions -D temp/db
+
+echo "==> Running make install"
+PG_MAJOR_VERSION=$(pg_config --version | sed 's/^PostgreSQL *//' | cut -d. -f1)
+if [ "$PG_MAJOR_VERSION" -ge 18 ]; then
+  # In PostgreSQL >=18 we can point `postgres` to our local extensions directory, so install there.
+  make install prefix=temp/install
+
+  # Symlink the system plpython3u to our local directory.
+  echo "==> Symlinking plpython3u"
+  mkdir -p temp/install/share/postgresql/extension
+  for file in "$(pg_config --sharedir)"/extension/plpython3u*; do
+    ln -s "$file" "temp/install/share/postgresql/extension/$(basename "$file")"
+  done
+  POSTGRES_CONFIG=(-c extension_control_path="$(realpath temp/install/share/postgresql)")
+else
+  # In PostgreSQL <18 we cannot point `postgres` to our local extensions directory. So we install
+  # directly to the system.
+  sudo make install PG_CONFIG="$(command -v pg_config)"
+fi
+
+cleanup() {
+  echo "==> Stopping PostgreSQL"
+  kill "$POSTGRES_PID" 2>/dev/null
+  wait "$POSTGRES_PID" 2>/dev/null
+}
+trap cleanup EXIT
+
+echo "==> Running postgres"
+PYTHONPATH="$(python -c "import site; print(site.getsitepackages()[0])")"
+export PYTHONPATH
+"$(pg_config --bindir)/postgres" -D temp/db "${POSTGRES_CONFIG[@]}" &
+POSTGRES_PID=$!
+trap 'kill $POSTGRES_PID' EXIT
+TIMEOUT=10
+ELAPSED=0
+until pg_isready -q; do
+  if [ $ELAPSED -ge $TIMEOUT ]; then
+    echo "ERROR: PostgreSQL failed to start within ~${TIMEOUT}s"
+    exit 1
+  fi
+  sleep 1
+  ELAPSED=$((ELAPSED + 1))
+done
+
+echo "==> Running setup.sql"
+psql -d postgres -f test/sql/create_extension.sql
+
+if [ -n "$DEDALUS_API_KEY" ]; then
+  psql -d postgres --variable "value='$DEDALUS_API_KEY'" -c 'ALTER DATABASE postgres SET dedalus.api_key = :value;'
+fi
+if [ -n "$DEDALUS_X_API_KEY" ]; then
+  psql -d postgres --variable "value='$DEDALUS_X_API_KEY'" -c 'ALTER DATABASE postgres SET dedalus.x_api_key = :value;'
+fi
+if [ -n "$DEDALUS_ORG_ID" ]; then
+  psql -d postgres --variable "value='$DEDALUS_ORG_ID'" -c 'ALTER DATABASE postgres SET dedalus.org_id = :value;'
+fi
+if [ -n "$DEDALUS_BASE_URL" ]; then
+  psql -d postgres --variable "value='$DEDALUS_BASE_URL'" -c 'ALTER DATABASE postgres SET dedalus.base_url = :value;'
+fi
+
+if command -v pgcli &>/dev/null; then
+  echo "==> Starting pgcli REPL"
+  pgcli postgres
+else
+  echo "==> Starting psql REPL (TIP: Install pgcli for better autocomplete!)"
+  psql -d postgres
+fi
