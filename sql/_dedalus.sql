@@ -113,14 +113,6 @@ CREATE TYPE dedalus_internal.page AS (
   next_request_options JSONB
 );
 
-CREATE SCHEMA IF NOT EXISTS dedalus_usage;
-
-CREATE TYPE dedalus_usage.machine_compute_usage AS ();
-CREATE TYPE dedalus_usage.machine_compute_usage_row AS ();
-CREATE TYPE dedalus_usage.machine_storage_usage AS ();
-CREATE TYPE dedalus_usage.machine_storage_usage_row AS ();
-CREATE TYPE dedalus_usage.org_usage AS ();
-
 CREATE SCHEMA IF NOT EXISTS dedalus_machines;
 
 CREATE TYPE dedalus_machines.create_params AS ();
@@ -129,17 +121,7 @@ CREATE TYPE dedalus_machines.machine AS ();
 CREATE TYPE dedalus_machines.machine_list AS ();
 CREATE TYPE dedalus_machines.machine_list_item AS ();
 CREATE TYPE dedalus_machines.update_params AS ();
-
-CREATE SCHEMA IF NOT EXISTS dedalus_machines_artifacts;
-
-CREATE TYPE dedalus_machines_artifacts.artifact AS ();
-CREATE TYPE dedalus_machines_artifacts.artifact_list AS ();
-
-CREATE SCHEMA IF NOT EXISTS dedalus_machines_previews;
-
-CREATE TYPE dedalus_machines_previews.preview AS ();
-CREATE TYPE dedalus_machines_previews.preview_create_params AS ();
-CREATE TYPE dedalus_machines_previews.preview_list AS ();
+CREATE TYPE dedalus_machines.machine_retrieve_response AS ();
 
 CREATE SCHEMA IF NOT EXISTS dedalus_machines_ssh;
 
@@ -158,16 +140,3 @@ CREATE TYPE dedalus_machines_executions.execution_event AS ();
 CREATE TYPE dedalus_machines_executions.execution_events AS ();
 CREATE TYPE dedalus_machines_executions.execution_list AS ();
 CREATE TYPE dedalus_machines_executions.execution_output AS ();
-
-CREATE SCHEMA IF NOT EXISTS dedalus_machines_terminals;
-
-CREATE TYPE dedalus_machines_terminals.terminal AS ();
-CREATE TYPE dedalus_machines_terminals.terminal_client_event AS ();
-CREATE TYPE dedalus_machines_terminals.terminal_closed_event AS ();
-CREATE TYPE dedalus_machines_terminals.terminal_create_params AS ();
-CREATE TYPE dedalus_machines_terminals.terminal_error_event AS ();
-CREATE TYPE dedalus_machines_terminals.terminal_input_event AS ();
-CREATE TYPE dedalus_machines_terminals.terminal_list AS ();
-CREATE TYPE dedalus_machines_terminals.terminal_output_event AS ();
-CREATE TYPE dedalus_machines_terminals.terminal_resize_event AS ();
-CREATE TYPE dedalus_machines_terminals.terminal_server_event AS ();
