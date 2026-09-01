@@ -1,21 +1,21 @@
 ALTER TYPE dedalus_machines.create_params
+  ADD ATTRIBUTE autosleep TEXT,
   ADD ATTRIBUTE memory_mib BIGINT,
   ADD ATTRIBUTE storage_gib BIGINT,
-  ADD ATTRIBUTE vcpu DOUBLE PRECISION,
-  ADD ATTRIBUTE autosleep TEXT;
+  ADD ATTRIBUTE vcpu DOUBLE PRECISION;
 
 CREATE OR REPLACE FUNCTION dedalus_machines.make_create_params(
-  memory_mib BIGINT,
-  storage_gib BIGINT,
-  vcpu DOUBLE PRECISION,
-  autosleep TEXT DEFAULT NULL
+  autosleep TEXT DEFAULT NULL,
+  memory_mib BIGINT DEFAULT NULL,
+  storage_gib BIGINT DEFAULT NULL,
+  vcpu DOUBLE PRECISION DEFAULT NULL
 )
 RETURNS dedalus_machines.create_params
 LANGUAGE SQL
 IMMUTABLE
 AS $$
   SELECT ROW(
-    memory_mib, storage_gib, vcpu, autosleep
+    autosleep, memory_mib, storage_gib, vcpu
   )::dedalus_machines.create_params;
 $$;
 
@@ -57,7 +57,7 @@ ALTER TYPE dedalus_machines.machine
   ADD ATTRIBUTE desired_state TEXT,
   ADD ATTRIBUTE machine_id TEXT,
   ADD ATTRIBUTE memory_mib BIGINT,
-  ADD ATTRIBUTE status dedalus_machines.lifecycle_status,
+  ADD ATTRIBUTE phase TEXT,
   ADD ATTRIBUTE storage_gib BIGINT,
   ADD ATTRIBUTE vcpu DOUBLE PRECISION;
 
@@ -66,7 +66,7 @@ CREATE OR REPLACE FUNCTION dedalus_machines.make_machine(
   desired_state TEXT,
   machine_id TEXT,
   memory_mib BIGINT,
-  status dedalus_machines.lifecycle_status,
+  phase TEXT,
   storage_gib BIGINT,
   vcpu DOUBLE PRECISION
 )
@@ -79,7 +79,7 @@ AS $$
     desired_state,
     machine_id,
     memory_mib,
-    status,
+    phase,
     storage_gib,
     vcpu
   )::dedalus_machines.machine;
@@ -106,7 +106,7 @@ ALTER TYPE dedalus_machines.machine_list_item
   ADD ATTRIBUTE desired_state TEXT,
   ADD ATTRIBUTE machine_id TEXT,
   ADD ATTRIBUTE memory_mib BIGINT,
-  ADD ATTRIBUTE status dedalus_machines.lifecycle_status,
+  ADD ATTRIBUTE phase TEXT,
   ADD ATTRIBUTE storage_gib BIGINT,
   ADD ATTRIBUTE vcpu DOUBLE PRECISION;
 
@@ -116,7 +116,7 @@ CREATE OR REPLACE FUNCTION dedalus_machines.make_machine_list_item(
   desired_state TEXT,
   machine_id TEXT,
   memory_mib BIGINT,
-  status dedalus_machines.lifecycle_status,
+  phase TEXT,
   storage_gib BIGINT,
   vcpu DOUBLE PRECISION
 )
@@ -130,7 +130,7 @@ AS $$
     desired_state,
     machine_id,
     memory_mib,
-    status,
+    phase,
     storage_gib,
     vcpu
   )::dedalus_machines.machine_list_item;
@@ -157,11 +157,44 @@ AS $$
   )::dedalus_machines.update_params;
 $$;
 
-CREATE OR REPLACE FUNCTION dedalus_machines._create(
+ALTER TYPE dedalus_machines.machine_retrieve_response
+  ADD ATTRIBUTE autosleep_seconds BIGINT,
+  ADD ATTRIBUTE desired_state TEXT,
+  ADD ATTRIBUTE machine_id TEXT,
+  ADD ATTRIBUTE memory_mib BIGINT,
+  ADD ATTRIBUTE status dedalus_machines.lifecycle_status,
+  ADD ATTRIBUTE storage_gib BIGINT,
+  ADD ATTRIBUTE vcpu DOUBLE PRECISION;
+
+CREATE OR REPLACE FUNCTION dedalus_machines.make_machine_retrieve_response(
+  autosleep_seconds BIGINT,
+  desired_state TEXT,
+  machine_id TEXT,
   memory_mib BIGINT,
+  status dedalus_machines.lifecycle_status,
   storage_gib BIGINT,
-  vcpu DOUBLE PRECISION,
-  autosleep TEXT DEFAULT NULL
+  vcpu DOUBLE PRECISION
+)
+RETURNS dedalus_machines.machine_retrieve_response
+LANGUAGE SQL
+IMMUTABLE
+AS $$
+  SELECT ROW(
+    autosleep_seconds,
+    desired_state,
+    machine_id,
+    memory_mib,
+    status,
+    storage_gib,
+    vcpu
+  )::dedalus_machines.machine_retrieve_response;
+$$;
+
+CREATE OR REPLACE FUNCTION dedalus_machines._create(
+  autosleep TEXT DEFAULT NULL,
+  memory_mib BIGINT DEFAULT NULL,
+  storage_gib BIGINT DEFAULT NULL,
+  vcpu DOUBLE PRECISION DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpython3u
@@ -169,10 +202,10 @@ AS $$
   from dedalus_sdk._types import not_given
 
   response = GD["__dedalus_context__"].client.machines.with_raw_response.create(
-      memory_mib=memory_mib,
-      storage_gib=storage_gib,
-      vcpu=vcpu,
       autosleep=not_given if autosleep is None else autosleep,
+      memory_mib=not_given if memory_mib is None else memory_mib,
+      storage_gib=not_given if storage_gib is None else storage_gib,
+      vcpu=not_given if vcpu is None else vcpu,
   )
 
   # We don't parse the JSON and let PL/Python perform data mapping because PL/Python errors for omitted
@@ -182,10 +215,10 @@ AS $$
 $$;
 
 CREATE OR REPLACE FUNCTION dedalus_machines.create(
-  memory_mib BIGINT,
-  storage_gib BIGINT,
-  vcpu DOUBLE PRECISION,
-  autosleep TEXT DEFAULT NULL
+  autosleep TEXT DEFAULT NULL,
+  memory_mib BIGINT DEFAULT NULL,
+  storage_gib BIGINT DEFAULT NULL,
+  vcpu DOUBLE PRECISION DEFAULT NULL
 )
 RETURNS dedalus_machines.machine
 LANGUAGE plpgsql
@@ -194,7 +227,7 @@ AS $$
     PERFORM dedalus_internal.ensure_context();
     RETURN jsonb_populate_record(
       NULL::dedalus_machines.machine,
-      dedalus_machines._create(memory_mib, storage_gib, vcpu, autosleep)
+      dedalus_machines._create(autosleep, memory_mib, storage_gib, vcpu)
     );
   END;
 $$;
@@ -215,14 +248,15 @@ AS $$
 $$;
 
 CREATE OR REPLACE FUNCTION dedalus_machines.retrieve(machine_id TEXT)
-RETURNS dedalus_machines.machine
+RETURNS dedalus_machines.machine_retrieve_response
 LANGUAGE plpgsql
 STABLE
 AS $$
   BEGIN
     PERFORM dedalus_internal.ensure_context();
     RETURN jsonb_populate_record(
-      NULL::dedalus_machines.machine, dedalus_machines._retrieve(machine_id)
+      NULL::dedalus_machines.machine_retrieve_response,
+      dedalus_machines._retrieve(machine_id)
     );
   END;
 $$;
@@ -453,42 +487,6 @@ AS $$
     PERFORM dedalus_internal.ensure_context();
     RETURN jsonb_populate_record(
       NULL::dedalus_machines.machine, dedalus_machines._wake(machine_id)
-    );
-  END;
-$$;
-
-CREATE OR REPLACE FUNCTION dedalus_machines._watch(
-  machine_id TEXT, last_event_id TEXT DEFAULT NULL
-)
-RETURNS JSONB
-LANGUAGE plpython3u
-STABLE
-AS $$
-  from dedalus_sdk._types import not_given
-
-  response = GD["__dedalus_context__"].client.machines.with_raw_response.watch(
-      machine_id=machine_id,
-      last_event_id=not_given if last_event_id is None else last_event_id,
-  )
-
-  # We don't parse the JSON and let PL/Python perform data mapping because PL/Python errors for omitted
-  # fields instead of defaulting them to NULL, but we want to be more lenient, which we handle in the
-  # caller later.
-  return response.text()
-$$;
-
-CREATE OR REPLACE FUNCTION dedalus_machines.watch(
-  machine_id TEXT, last_event_id TEXT DEFAULT NULL
-)
-RETURNS dedalus_machines.machine
-LANGUAGE plpgsql
-STABLE
-AS $$
-  BEGIN
-    PERFORM dedalus_internal.ensure_context();
-    RETURN jsonb_populate_record(
-      NULL::dedalus_machines.machine,
-      dedalus_machines._watch(machine_id, last_event_id)
     );
   END;
 $$;

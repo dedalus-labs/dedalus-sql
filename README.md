@@ -60,7 +60,9 @@ This extension requires:
 
 ```sql
 SELECT *
-FROM dedalus_usage.retrieve();
+FROM dedalus_machines.retrieve(
+  machine_id := 'dm-ecc2efdd-ddfa-31a9-c6f1-b833d337aa7c'
+);
 ```
 
 ## Client configuration
